@@ -68,9 +68,22 @@ app.use(session({
   saveUninitialized: true,
 }));
 
-// Inicializa Passport y usa sesiones
+// Configuración de express-session
+app.use(session({
+  secret: 'your-secret-key', // Cambia esto por una clave secreta segura
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: false, // Cambia a true si usas HTTPS
+    httpOnly: true,
+    sameSite: 'lax',
+  },
+}));
+
+// Inicializar Passport y sesiones
 app.use(passport.initialize());
 app.use(passport.session());
+
 
 // Configuración de Passport para Google OAuth
 passport.use(new GoogleStrategy({
@@ -146,28 +159,33 @@ app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'em
 app.get('/auth/google/callback', passport.authenticate('google', { failureRedirect: '/login' }), (req, res) => {
   res.redirect('http://localhost:4321/Profile');
 });
+// Ruta para el inicio de sesión manual
 app.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { username, password } = req.body;
 
   try {
-      const user = await Usuario.findOne({ email });
-      if (!user) {
-          return res.status(400).json({ message: 'Usuario no encontrado.' });
-      }
+    // Buscar al usuario por el nombre de usuario
+    const user = await Usuario.findOne({ username });
+    if (!user) {
+      return res.status(400).json({ message: 'Usuario no encontrado.' });
+    }
 
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) {
-          return res.status(400).json({ message: 'Contraseña incorrecta.' });
-      }
+    // Verificar la contraseña
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Contraseña incorrecta.' });
+    }
 
-      // Si las credenciales son correctas, puedes iniciar sesión al usuario aquí
-      req.login(user, (err) => {
-          if (err) return res.status(500).json({ message: 'Error al iniciar sesión.' });
-          return res.status(200).json({ message: 'Inicio de sesión exitoso.' });
-      });
+    // Iniciar sesión al usuario
+    req.login(user, (err) => {
+      if (err) return res.status(500).json({ message: 'Error al iniciar sesión.' });
+
+      // Redirigir al perfil del usuario después del inicio de sesión exitoso
+      return res.status(200).json({ message: 'Inicio de sesión exitoso.' });
+    });
   } catch (error) {
-      console.error('Error en el login:', error);
-      res.status(500).json({ message: 'Error al iniciar sesión.' });
+    console.error('Error en el login:', error);
+    res.status(500).json({ message: 'Error al iniciar sesión.' });
   }
 });
 
@@ -201,30 +219,41 @@ app.post('/sign-up', [
   const { username, email, telefono, password } = req.body;
 
   try {
+    // Verificar si el usuario ya existe en la base de datos
     const usuarioExistente = await Usuario.findOne({ email });
     if (usuarioExistente) {
       return res.status(400).json({ message: 'El correo electrónico ya está registrado.' });
     }
 
+    // Cifrar la contraseña antes de guardarla
     const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Crear el nuevo usuario en la base de datos
     const nuevoUsuario = new Usuario({
-      googleId: null,
       username,
       email,
       telefono,
-      password: hashedPassword,
-      profilePic: '',
-      bio: '',
-      status: 'Offline'
+      password: hashedPassword
     });
 
     await nuevoUsuario.save();
-    res.status(201).json({ message: 'Usuario registrado correctamente.' });
+
+    // Iniciar sesión automáticamente después del registro
+    req.login(nuevoUsuario, (err) => {
+      if (err) {
+        console.error('Error al iniciar sesión después del registro:', err);
+        return res.status(500).json({ message: 'Error al iniciar sesión después del registro.' });
+      }
+      // Si el inicio de sesión es exitoso, enviar una respuesta exitosa
+      res.status(201).json({ message: 'Usuario registrado y autenticado correctamente.' });
+    });
   } catch (error) {
     console.error('Error guardando el usuario:', error);
-    res.status(500).json({ message: 'Error guardando el usuario.', error: error.message });
+    res.status(500).json({ message: 'Error guardando el usuario en la base de datos.', error: error.message });
   }
 });
+
+
 
 // ---- NUEVAS RUTAS PARA RECETAS ----
 
