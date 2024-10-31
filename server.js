@@ -9,6 +9,7 @@ const bcrypt = require('bcrypt');
 const { body, validationResult } = require('express-validator');
 const morgan = require('morgan');
 const helmet = require('helmet');
+const axios = require('axios'); // Importar axios
 
 // Cargar variables de entorno
 dotenv.config();
@@ -186,6 +187,45 @@ app.post('/login', async (req, res) => {
   } catch (error) {
     console.error('Error en el login:', error);
     res.status(500).json({ message: 'Error al iniciar sesión.' });
+  }
+});
+//--- ask and answer ---
+dotenv.config();
+
+
+app.use(express.json());
+
+// Endpoint para procesar preguntas y obtener respuestas de OpenAI
+app.post('/api/chat', async (req, res) => {
+  const { question } = req.body;
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+  if (!OPENAI_API_KEY) {
+    return res.status(500).json({ message: 'Falta la clave API de OpenAI en las variables de entorno.' });
+  }
+
+  try {
+    const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+      model: "gpt-3.5-turbo",
+      messages: [
+        { role: "system", content: "Eres un asistente especializado en recetas de cocina." },
+        { role: "user", content: question }
+      ],
+      max_tokens: 100,
+      temperature: 0.7,
+    }, {
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const answer = response.data.choices[0].message.content.trim();
+    res.json({ answer });
+
+  } catch (error) {
+    console.error('Error en la API de OpenAI:', error.response?.data || error.message);
+    res.status(500).json({ message: 'Error al obtener respuesta de OpenAI' });
   }
 });
 
