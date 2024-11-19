@@ -61,7 +61,69 @@ const recipeSchema = new mongoose.Schema({
 });
 
 const Recipe = mongoose.model('Recipe', recipeSchema);
+// Función para clasificar recetas
+const categories = {
+  desserts: ["candy", "chocolate", "sweet", "cake"],
+  drinks: ["juice", "smoothie", "tea", "coffee"],
+  healthy: ["vegan", "salad", "vegetable", "soup"],
+  main_course: ["meat", "chicken", "dinner", "pasta"]
+};
 
+const classifyRecipe = (recipe) => {
+  const text = `${recipe.name?.toLowerCase()} ${recipe.description?.toLowerCase()} ${recipe.ingredients?.join(' ').toLowerCase()}`;
+  for (const [category, keywords] of Object.entries(categories)) {
+    if (keywords.some((keyword) => text.includes(keyword))) {
+      return category;
+    }
+  }
+  return "other";
+};
+// Rutas
+app.post('/recipes/classify', async (req, res) => {
+  try {
+    const recipes = await Recipe.find();
+    if (recipes.length === 0) {
+      return res.status(404).json({ message: 'No hay recetas para clasificar.' });
+    }
+
+    for (const recipe of recipes) {
+      const category = classifyRecipe(recipe);
+      recipe.category = category;
+      await recipe.save();
+    }
+
+    res.json({ message: 'Clasificación completada' });
+  } catch (error) {
+    console.error('Error clasificando recetas:', error);
+    res.status(500).json({ message: 'Error clasificando recetas' });
+  }
+});
+app.get('/recipes', async (req, res) => {
+  try {
+    const recipes = await Recipe.find();
+    res.json(recipes);
+  } catch (err) {
+    console.error('Error obteniendo recetas:', err);
+    res.status(500).json({ message: 'Error al obtener recetas.', error: err.message });
+  }
+});
+
+app.post('/recipes', async (req, res) => {
+  try {
+    const { name, description, ingredients, steps, rating } = req.body;
+    if (!name || !description || !ingredients || !steps) {
+      return res.status(400).json({ message: 'Todos los campos son obligatorios.' });
+    }
+
+    const category = classifyRecipe({ name, description, ingredients });
+    const newRecipe = new Recipe({ name, description, ingredients, steps, rating, category });
+    await newRecipe.save();
+    res.status(201).json({ message: 'Receta creada', recipe: newRecipe });
+  } catch (err) {
+    console.error('Error creando receta:', err);
+    res.status(500).json({ message: 'Error al crear la receta', error: err.message });
+  }
+});
 // Configuración de express-session
 app.use(session({
   secret: 'your-secret-key',
@@ -300,13 +362,16 @@ app.post('/sign-up', [
 // Ruta para obtener todas las recetas
 app.get('/recipes', async (req, res) => {
   try {
-    const recipes = await Recipe.find();
+    const { category } = req.query;
+    const query = category ? { category } : {};
+    const recipes = await Recipe.find(query);
     res.json(recipes);
-  } catch (err) {
-    console.error('Error obteniendo recetas:', err);
-    res.status(500).json({ message: 'Error al obtener recetas.', error: err.message });
+  } catch (error) {
+    console.error('Error obteniendo recetas:', error);
+    res.status(500).json({ message: 'Error al obtener recetas.' });
   }
 });
+  
 
 // Ruta para agregar una nueva receta
 app.post('/recipes', async (req, res) => {
